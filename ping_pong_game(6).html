@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Ping Pong Game</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      transition: background 0.3s, color 0.3s;
+    }
+    canvas {
+      background: black;
+      display: block;
+      margin: 0 auto;
+      max-width: 100vw;
+      max-height: 100vh;
+      aspect-ratio: 2 / 1;
+    }
+    #intro {
+      text-align: center;
+      margin-top: 50px;
+    }
+    .menu {
+      margin: 10px auto;
+      padding: 10px;
+      width: 300px;
+      background: #f0f0f0;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    .dark-mode {
+      background: #1e1e1e;
+      color: white;
+    }
+    .dark-mode .menu {
+      background: #2c2c2c;
+    }
+    .menu input, .menu select, .menu button {
+      margin: 5px 0;
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+    }
+    input {
+      width: 200px;
+    }
+  </style>
+</head>
+<body>
+<div id="intro">
+  <h1 id="title">Ping Pong Game</h1>
+  <div class="menu">
+    <label>Enter total points to win:</label>
+    <input type="number" id="pointsToWin" min="1" value="5">
+
+    <label>Player 1 Name:</label>
+    <input type="text" id="p1Name" value="Player 1">
+
+    <label>Player 2 Name:</label>
+    <input type="text" id="p2Name" value="Player 2">
+
+    <label>Bat Color:</label>
+    <input type="color" id="batColor" value="#ffffff">
+
+    <label>Ball Color:</label>
+    <input type="color" id="ballColor" value="#ffffff">
+
+    <label>Ball speed:</label>
+    <input type="number" id="chooseBallSpeed" min="1" value="5">
+
+    <label>Background Color:</label>
+    <input type="color" id="bgColor" value="#000000">
+
+    <label>Mode:</label>
+    <select id="modeToggle">
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+
+    <table>
+      <tr><td><button onclick="startGame()">Start Game</button></td>
+      <td><button onclick="createRoom()">Create Room</button></td></tr>
+      <tr><button onclick="joinRoom()">Join Room</button></tr>
+    </table>
+  </div>
+</div>
+<canvas id="game" style="display:none;"></canvas>
+<script>
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const intro = document.getElementById('intro');
+  const title = document.getElementById('title');
+
+  let isTouch = false;
+  let touchDirection = 0;
+  let touchHeld = false;
+  let keyHeld = { p1Up: false, p1Down: false, p2Up: false, p2Down: false };
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerWidth / 2;
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  let basePaddleHeight = 200, paddleWidth = 10;
+  let paddleHeight = basePaddleHeight;
+  const ballSize = 10;
+  let p1Y = canvas.height / 2 - paddleHeight / 2;
+  let p2Y = canvas.height / 2 - paddleHeight / 2;
+  let ballX = canvas.width / 2, ballY = canvas.height / 2;
+  let ballSpeedX = 6, ballSpeedY = 6, maxSpeed = 6;
+  let p1Score = 0, p2Score = 0, pointsToWin = 5, chosenSpeed = 6;
+  let gameRunning = false;
+  let batColor = '#ffffff';
+  let ballColor = '#ffffff';
+  let bgColor = '#000000';
+  let p1Name = 'Player 1';
+  let p2Name = 'Player 2';
+  let paddleBoostTimeout = null;
+
+  function drawRect(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  }
+
+  function drawCircle(x, y, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawText(text, x, y) {
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.fillText(text, x, y);
+  }
+
+  function draw() {
+    drawRect(0, 0, canvas.width, canvas.height, bgColor);
+    drawRect(0, p1Y, paddleWidth, paddleHeight, batColor);
+    drawRect(canvas.width - paddleWidth, p2Y, paddleWidth, paddleHeight, batColor);
+    drawCircle(ballX, ballY, ballSize, ballColor);
+    drawText(`${p1Name}: ${p1Score}`, 100, 20);
+    drawText(`${p2Name}: ${p2Score}`, canvas.width - 150, 20);
+  }
+
+  function update() {
+    ballX += ballSpeedX;
+    ballY += ballSpeedY;
+
+    if (Math.abs(ballSpeedX) < maxSpeed || Math.abs(ballSpeedY) < maxSpeed) {
+      const speedIncrease = 0.05;
+      ballSpeedX += speedIncrease * Math.sign(ballSpeedX);
+      ballSpeedY += speedIncrease * Math.sign(ballSpeedY);
+    }
+
+    if (ballY < 0 || ballY > canvas.height) ballSpeedY = -ballSpeedY;
+
+    if (ballX < paddleWidth && ballY > p1Y && ballY < p1Y + paddleHeight)
+      ballSpeedX = -ballSpeedX;
+    if (ballX > canvas.width - paddleWidth && ballY > p2Y && ballY < p2Y + paddleHeight)
+      ballSpeedX = -ballSpeedX;
+
+    if (ballX < 0) {
+      p2Score++;
+      resetBall();
+      boostPaddles();
+    }
+    if (ballX > canvas.width) {
+      p1Score++;
+      resetBall();
+      boostPaddles();
+    }
+
+    if (p1Score >= pointsToWin || p2Score >= pointsToWin) {
+      let winner = p1Score >= pointsToWin ? p1Name : p2Name;
+      setTimeout(() => {
+        canvas.style.display = 'none';
+        intro.style.display = 'block';
+        title.innerText = `${winner} wins! Congratulations!`;
+        p1Score = 0;
+        p2Score = 0;
+        resetBall();
+        gameRunning = false;
+      }, 100);
+    }
+
+    const moveSpeed = 8;
+    if (touchHeld) {
+      if (touchDirection === 'up') p1Y -= moveSpeed;
+      else if (touchDirection === 'down') p1Y += moveSpeed;
+    }
+
+    if (keyHeld.p1Up) p1Y -= moveSpeed;
+    if (keyHeld.p1Down) p1Y += moveSpeed;
+    if (keyHeld.p2Up) p2Y -= moveSpeed;
+    if (keyHeld.p2Down) p2Y += moveSpeed;
+
+    p1Y = Math.max(0, Math.min(canvas.height - paddleHeight, p1Y));
+    p2Y = Math.max(0, Math.min(canvas.height - paddleHeight, p2Y));
+  }
+
+  function resetBall() {
+    ballX = canvas.width / 2;
+    ballY = canvas.height / 2;
+    ballSpeedX = chosenSpeed * (Math.random() > 0.5 ? 1 : -1);
+    ballSpeedY = chosenSpeed * (Math.random() > 0.5 ? 1 : -1);
+  }
+
+  function boostPaddles() {
+    paddleHeight = basePaddleHeight + 40;
+    clearTimeout(paddleBoostTimeout);
+    paddleBoostTimeout = setTimeout(() => {
+      paddleHeight = basePaddleHeight;
+    }, 5000);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (!gameRunning) return;
+    if (e.key === 'w') keyHeld.p1Up = true;
+    if (e.key === 's') keyHeld.p1Down = true;
+    if (e.key === 'ArrowUp') keyHeld.p2Up = true;
+    if (e.key === 'ArrowDown') keyHeld.p2Down = true;
+  });
+
+  document.addEventListener('keyup', e => {
+    if (e.key === 'w') keyHeld.p1Up = false;
+    if (e.key === 's') keyHeld.p1Down = false;
+    if (e.key === 'ArrowUp') keyHeld.p2Up = false;
+    if (e.key === 'ArrowDown') keyHeld.p2Down = false;
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'q') {
+      gameRunning = false;
+      const resume = confirm("Game paused. Click OK to resume, Cancel to quit.");
+      if (resume) {
+        gameRunning = true;
+        loop();
+      } else {
+        canvas.style.display = 'none';
+        intro.style.display = 'block';
+        title.innerText = 'Ping Pong Game';
+      }
+    }
+  });
+
+  canvas.addEventListener('touchstart', e => {
+    isTouch = true;
+    const touchY = e.touches[0].clientY;
+    touchDirection = touchY < canvas.height / 2 ? 'up' : 'down';
+    touchHeld = true;
+  });
+  canvas.addEventListener('touchend', () => {
+    touchHeld = false;
+  });
+
+  canvas.addEventListener('mousedown', e => {
+    isTouch = false;
+    touchDirection = e.clientY < canvas.height / 2 ? 'up' : 'down';
+    touchHeld = true;
+  });
+  canvas.addEventListener('mouseup', () => {
+    touchHeld = false;
+  });
+
+  function loop() {
+    if (!gameRunning) return;
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function startGame() {
+    chosenSpeed = parseFloat(document.getElementById('chooseBallSpeed').value) || 6;
+    maxSpeed = chosenSpeed;
+    pointsToWin = parseInt(document.getElementById('pointsToWin').value) || 5;
+    batColor = document.getElementById('batColor').value;
+    ballColor = document.getElementById('ballColor').value;
+    bgColor = document.getElementById('bgColor').value;
+    p1Name = document.getElementById('p1Name').value;
+    p2Name = document.getElementById('p2Name').value;
+    const mode = document.getElementById('modeToggle').value;
+
+    document.body.className = mode === 'dark' ? 'dark-mode' : '';
+
+    intro.style.display = 'none';
+    canvas.style.display = 'block';
+    resizeCanvas();
+    p1Score = 0;
+    p2Score = 0;
+    resetBall();
+    paddleHeight = basePaddleHeight;
+    gameRunning = true;
+    loop();
+  }
+
+  function createRoom() {
+    // TODO: Implement WebRTC signaling for room creation
+    alert('Create Room: WebRTC setup not implemented yet.');
+  }
+
+  function joinRoom() {
+    // TODO: Implement WebRTC signaling for joining a room
+    const roomId = prompt('Enter Room ID to join:');
+    if (roomId) alert(`Attempting to join Room ID: ${roomId} (WebRTC not yet set up)`);
+  }
+</script>
+</body>
+</html>
